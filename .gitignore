@@ -1,2 +1,25 @@
-.idea
+*.bak
 Cargo.lock
+target/
+
+## File system
+.DS_Store
+[Dd]esktop.ini
+Thumbs.db
+Thumbs.db:encryptable
+
+## Editors
+Session.vim
+*~
+*.swp
+*.swo
+.idea/
+*.iml
+.vscode/
+.vs/
+.project
+*.sublime-workspace
+*.sublime-project
+.cproject
+.helix
+.zen/

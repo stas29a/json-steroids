@@ -153,7 +153,7 @@ fn rt_u64_max() {
 
 #[test]
 fn rt_f64_basic() {
-    let v = 3.141592653589793f64;
+    let v = core::f64::consts::PI;
     let rt: f64 = from_str(&to_string(&v)).unwrap();
     assert!((rt - v).abs() < 1e-12);
 }
@@ -517,6 +517,165 @@ fn nested_struct_roundtrip() {
 }
 
 #[test]
+fn struct_with_rename_all() {
+    #[derive(Debug, PartialEq, json_steroids::Json)]
+    #[json(rename_all = "camelCase")]
+    struct User {
+        user_name: String,
+    }
+    assert_eq!(
+        from_str::<User>(r#"{"userName": "alice"}"#).unwrap(),
+        User {
+            user_name: "alice".to_string(),
+        }
+    );
+    assert_eq!(
+        to_string(&User {
+            user_name: "alice".to_string(),
+        }),
+        r#"{"userName":"alice"}"#
+    )
+}
+
+#[test]
+fn struct_with_rename_and_alias() {
+    #[derive(Debug, PartialEq, json_steroids::Json)]
+    struct User {
+        #[json(rename = "Name", alias = "n")]
+        name: String,
+    }
+    assert_eq!(
+        from_str::<User>(r#"{"n": "Alice"}"#).unwrap(),
+        User {
+            name: "Alice".to_string(),
+        }
+    );
+    assert_eq!(
+        to_string(&User {
+            name: "Alice".to_string(),
+        }),
+        r#"{"Name":"Alice"}"#
+    )
+}
+
+#[test]
+fn struct_with_default_fields() {
+    fn default_role() -> String {
+        "guest".to_string()
+    }
+
+    #[derive(Debug, PartialEq, json_steroids::JsonDeserialize)]
+    struct User {
+        name: String,
+
+        #[json(default = "default_role")]
+        role: String,
+
+        #[json(default)]
+        tags: Vec<String>,
+    }
+    let json_str = r#"{"name": "Alice"}"#;
+    let user: User = from_str(json_str).unwrap();
+    assert_eq!(
+        user,
+        User {
+            name: "Alice".to_string(),
+            role: default_role(),
+            tags: Vec::new(),
+        }
+    )
+}
+
+#[test]
+fn struct_with_serializer() {
+    // serialize float as a string
+    fn ser_float<W: json_steroids::writer::Writer>(
+        value: &f64,
+        writer: &mut json_steroids::JsonWriter<W>,
+    ) {
+        writer.write_raw("\"");
+        writer.write_f64(*value);
+        writer.write_raw("\"");
+    }
+
+    #[derive(Debug, PartialEq, json_steroids::JsonSerialize)]
+    struct Data {
+        #[json(serialize_with = ser_float)]
+        price: f64,
+        #[json(serialize_with = ser_float)]
+        quantity: f64,
+    }
+    let json_str = r#"{"price":"100.1","quantity":"-42.0"}"#;
+    assert_eq!(
+        json_str,
+        to_string(&Data {
+            price: 100.1,
+            quantity: -42.0
+        })
+    )
+}
+
+#[test]
+fn struct_with_deserializer() {
+    // deserialize float from a string
+    fn de_float<'de>(parser: &mut json_steroids::JsonParser<'de>) -> json_steroids::Result<f64> {
+        let pos = parser.position();
+        let s = parser.parse_string()?;
+        s.parse()
+            .map_err(|_e| json_steroids::JsonError::InvalidNumber(pos + 1))
+    }
+
+    #[derive(Debug, PartialEq, json_steroids::JsonDeserialize)]
+    struct Data {
+        #[json(deserialize_with = de_float)]
+        price: f64,
+        #[json(deserialize_with = de_float)]
+        quantity: f64,
+    }
+    let json_str = r#"{"price": "100.1", "quantity": "-42.0"}"#;
+    let data: Data = from_str(json_str).unwrap();
+    assert_eq!(
+        data,
+        Data {
+            price: 100.1,
+            quantity: -42.0
+        }
+    )
+}
+
+#[test]
+fn struct_with_skip() {
+    fn guest() -> String {
+        "guest".to_string()
+    }
+
+    #[derive(Debug, PartialEq, json_steroids::Json)]
+    struct User {
+        name: String,
+        #[json(skip, default = guest)]
+        role: String,
+        #[json(skip)]
+        score: i64,
+    }
+    assert_eq!(
+        to_string(&User {
+            name: "Bob".to_string(),
+            role: "this value should be skipped".to_string(),
+            score: 42,
+        }),
+        r#"{"name":"Bob"}"#
+    );
+    assert_eq!(
+        from_str(r#"{"name":"Bob", "role":"this value should be skipped", "score": 99}"#),
+        Ok(User {
+            name: "Bob".to_string(),
+            role: "guest".to_string(),
+            score: 0,
+        })
+    )
+}
+
+#[test]
 fn all_primitives_roundtrip() {
     let v = AllPrimitives {
         b: true,
@@ -587,6 +746,180 @@ fn unit_enum_variant_roundtrip() {
     let v = Shape::Point;
     let rt: Shape = from_str(&to_string(&v)).unwrap();
     assert_eq!(rt, v);
+}
+
+#[test]
+fn enum_with_rename_all() {
+    #[derive(Debug, PartialEq, json_steroids::Json)]
+    #[json(rename_all = "camelCase")]
+    enum User {
+        VariantA { user_name: String },
+    }
+    assert_eq!(
+        from_str::<User>(r#"{"variantA": {"userName": "alice"}}"#).unwrap(),
+        User::VariantA {
+            user_name: "alice".to_string(),
+        }
+    );
+    assert_eq!(
+        to_string(&User::VariantA {
+            user_name: "alice".to_string(),
+        }),
+        r#"{"variantA":{"userName":"alice"}}"#
+    )
+}
+
+#[test]
+fn enum_with_rename_and_alias() {
+    #[derive(Debug, PartialEq, json_steroids::Json)]
+    enum User {
+        VariantA {
+            #[json(rename = "Name", alias = "n")]
+            name: String,
+        },
+    }
+    assert_eq!(
+        from_str::<User>(r#"{"VariantA":{"n": "Alice"}}"#).unwrap(),
+        User::VariantA {
+            name: "Alice".to_string(),
+        }
+    );
+    assert_eq!(
+        to_string(&User::VariantA {
+            name: "Alice".to_string(),
+        }),
+        r#"{"VariantA":{"Name":"Alice"}}"#
+    );
+}
+
+#[test]
+fn enum_with_default_fields() {
+    fn default_role() -> String {
+        "guest".to_string()
+    }
+
+    #[derive(Debug, PartialEq, json_steroids::JsonDeserialize)]
+    enum User {
+        Student {
+            name: String,
+
+            #[json(default = "default_role")]
+            role: String,
+
+            #[json(default)]
+            tags: Vec<String>,
+        },
+        Teacher,
+    }
+    let json_str = r#"{"Student":{"name":"Alice"}}"#;
+    let user: User = from_str(json_str).unwrap();
+    assert_eq!(
+        user,
+        User::Student {
+            name: "Alice".to_string(),
+            role: default_role(),
+            tags: Vec::new()
+        }
+    )
+}
+
+#[test]
+fn enum_with_serializer() {
+    // serialize float as a string
+    fn ser_float<W: json_steroids::writer::Writer>(
+        value: &f64,
+        writer: &mut json_steroids::JsonWriter<W>,
+    ) {
+        writer.write_raw("\"");
+        writer.write_f64(*value);
+        writer.write_raw("\"");
+    }
+
+    #[derive(Debug, PartialEq, json_steroids::JsonSerialize)]
+    enum Data {
+        VariantA {
+            #[json(serialize_with = ser_float)]
+            price: f64,
+            #[json(serialize_with = ser_float)]
+            quantity: f64,
+        },
+    }
+    let json_str = r#"{"VariantA":{"price":"100.1","quantity":"-42.0"}}"#;
+    assert_eq!(
+        json_str,
+        to_string(&Data::VariantA {
+            price: 100.1,
+            quantity: -42.0
+        })
+    )
+}
+
+#[test]
+fn enum_with_deserializer() {
+    // deserialize float from a string
+    fn de_float<'de>(parser: &mut json_steroids::JsonParser<'de>) -> json_steroids::Result<f64> {
+        let pos = parser.position();
+        let s = parser.parse_string()?;
+        s.parse()
+            .map_err(|_e| json_steroids::JsonError::InvalidNumber(pos + 1))
+    }
+
+    #[derive(Debug, PartialEq, json_steroids::JsonDeserialize)]
+    enum Data {
+        VariantA {
+            #[json(deserialize_with = de_float)]
+            price: f64,
+            #[json(deserialize_with = de_float)]
+            quantity: f64,
+        },
+    }
+    let json_str = r#"{"VariantA":{"price":"100.1","quantity":"-42.0"}}"#;
+    let data: Data = from_str(json_str).unwrap();
+    assert_eq!(
+        data,
+        Data::VariantA {
+            price: 100.1,
+            quantity: -42.0
+        }
+    )
+}
+
+#[test]
+fn enum_with_skip() {
+    fn guest() -> String {
+        "guest".to_string()
+    }
+
+    #[derive(Debug, PartialEq, json_steroids::Json)]
+    enum User {
+        VariantA {
+            name: String,
+            #[json(skip, default = guest)]
+            role: String,
+            #[json(skip)]
+            score: i64,
+            #[json(skip)]
+            foo: String,
+        },
+    }
+    assert_eq!(
+        to_string(&User::VariantA {
+            name: "Bob".to_string(),
+            role: "skipped".to_string(),
+            score: 42,
+            foo: "".to_string(),
+        }),
+        r#"{"VariantA":{"name":"Bob"}}"#
+    );
+    assert_eq!(
+        from_str(r#"{"VariantA":{"name":"Bob", "role":"skipped", "score": 99}}"#),
+        Ok(User::VariantA {
+            name: "Bob".to_string(),
+            role: "guest".to_string(),
+            score: 0,
+            foo: "".to_string(),
+        })
+    )
 }
 
 // ─────────────────────────────────────────────

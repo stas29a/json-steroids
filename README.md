@@ -194,9 +194,11 @@ struct Config {
 }
 ```
 
-### Field Renaming
+### Field renaming and aliasing
 
-Use the `#[json(rename = "...")]` attribute to customize field names in JSON:
+Use `#[json(rename = "...")]` attribute to set the corresponding field names in JSON.
+Use `#[json(alias = "...")]` to create a deserialization alias for the desired field
+(multiple alias flags for a single field are supported).
 
 ```rust
 use json_steroids::Json;
@@ -205,8 +207,120 @@ use json_steroids::Json;
 struct ApiResponse {
     #[json(rename = "statusCode")]
     status_code: u32,
-    #[json(rename = "errorMessage")]
+    #[json(rename = "errorMessage", alias="msg")]
     error_message: Option<String>,
+}
+```
+
+To rename all the fields and enum variants use container-level `rename_all` attribute:
+```rust
+#[derive(Json)]
+#[json(rename_all = "camelCase")]
+enum ApiResult {
+    Ok { return_value: f64 }, // -> {"ok":{"returnValue": 2.71828}}
+    Error { error_code: i16}, // -> {"error":{"errorCode": -1}}
+}
+```
+
+### Skipping fields
+
+Use the `#[json(skip_deserializing)]` and `#[json(skip_serializing)]` attributes
+(or just `#[json(skip)]` for both) to skip desired fields:
+
+```rust
+use json_steroids::Json;
+
+#[derive(Default, Json)]
+struct User {
+    name: String,
+    #[json(skip)]
+    token: String,
+}
+```
+
+### Default values for optional fields
+
+Use the `#[json(default)]` or `#[json(default=custom_function)]` field
+attributes to set default values for optional fields:
+
+```rust
+use json_steroids::Json;
+use std::cell::OnceCell;
+
+#[derive(Json)]
+struct ApiResponse {
+    #[json(rename = "statusCode", default=200)]
+    status_code: u32,
+    #[json(default = custom)]
+    error_message: String,
+}
+
+fn custom() -> String {
+    let cell: OnceCell<String> = OnceCell::new();
+    let default_value = cell.get_or_init(|| {
+        String::from("Runtime default value")
+    });
+    default_value.to_string()
+}
+```
+
+### Custom serialization and deserialization functions
+
+Use the `#[json(serialize_with=custom_ser_function)]` and/or `#[json(deserialize_with=custom_de_function)]` field
+attributes to set custom serializer and deserializer functions:
+
+```rust
+use json_steroids::Json;
+
+#[derive(Json)]
+struct ApiResponse {
+    #[json(serialize_with = ser_status, deserialize_with = de_status)]
+    status: bool,
+}
+
+fn ser_status<W: json_steroids::writer::Writer>(
+    value: &bool,
+    writer: &mut json_steroids::JsonWriter<W>,
+) {
+    if *value {
+        writer.write_string("OK")
+    } else {
+        writer.write_string("Error")
+    }
+}
+
+fn de_status<'de>(parser: &mut json_steroids::JsonParser<'de>) -> json_steroids::Result<bool> {
+    let pos = parser.position();
+    let s = parser.parse_string()?;
+    match &*s {
+        "OK" => Ok(true),
+        "Error" => Ok(false),
+        _ => Err(json_stroids::JsonError::Custom(format!("Unknown status at position {pos}: `{s}`")))
+    }
+}
+```
+
+You can also create a dedicated module with `serialize` and `deserialize` functions and specify its name inside `with = path::to::module` flag:
+
+```rust
+#[derive(Json)]
+struct ApiResponse {
+    #[json(with = custom_ser_de)]
+    status: bool,
+}
+
+mod custom_ser_de {
+    fn serialize<W: json_steroids::writer::Writer>(
+        value: &bool,
+        writer: &mut json_steroids::JsonWriter<W>,
+    ) {
+        // ..
+    }
+
+    // change FieldType to type of a given field
+    fn deserialize<'de>(parser: &mut json_steroids::JsonParser<'de>) -> json_steroids::Result<FieldType> {
+        // ..
+    }
 }
 ```
 
