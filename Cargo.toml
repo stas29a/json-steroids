@@ -13,11 +13,13 @@ license = "MIT"
 [features]
 default = ["simd"]
 simd = []
+arrayvec = ["dep:arrayvec"]
 
 [dependencies]
 json-steroids-derive = { path = "./json-steroids-derive", version = "0.3.0"}
 itoa = "1.0"
 ryu = "1.0"
+arrayvec = { version = "0.7", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"

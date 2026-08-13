@@ -34,6 +34,9 @@ pub mod writer;
 #[cfg(feature = "simd")]
 pub mod simd;
 
+#[cfg(feature = "arrayvec")]
+pub mod arrayvec;
+
 pub use error::{JsonError, Result};
 pub use parser::JsonParser;
 pub use traits::{JsonDeserialize, JsonSerialize};
